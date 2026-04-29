@@ -1,5 +1,6 @@
 #include "storage/storage_utils.h"
 
+#include <cctype>
 #include <filesystem>
 
 #include "common/null_buffer.h"
@@ -15,6 +16,24 @@ using namespace lbug::common;
 
 namespace lbug {
 namespace storage {
+
+static bool isPathSeparator(char ch) {
+    return ch == '/' || ch == '\\';
+}
+
+static bool isWindowsDrivePath(const std::string& path) {
+    if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
+        return true;
+    }
+    return false;
+}
+
+static bool isWindowsAbsolutePath(const std::string& path) {
+    if (path.size() >= 3 && isWindowsDrivePath(path) && isPathSeparator(path[2])) {
+        return true;
+    }
+    return path.size() >= 2 && isPathSeparator(path[0]) && isPathSeparator(path[1]);
+}
 
 std::string StorageUtils::getColumnName(const std::string& propertyName, ColumnType type,
     const std::string& prefix) {
@@ -59,6 +78,11 @@ std::string StorageUtils::expandPath(const main::ClientContext* context, const s
         fullPath =
             context->getCurrentSetting(main::HomeDirectorySetting::name).getValue<std::string>() +
             fullPath.substr(1);
+    }
+    std::filesystem::path fullFsPath{fullPath};
+    if (fullFsPath.is_absolute() || isWindowsAbsolutePath(fullPath) ||
+        isWindowsDrivePath(fullPath)) {
+        return fullFsPath.lexically_normal().string();
     }
     // Normalize the path to resolve '.' and '..'
     std::filesystem::path normalizedPath = std::filesystem::absolute(fullPath).lexically_normal();
